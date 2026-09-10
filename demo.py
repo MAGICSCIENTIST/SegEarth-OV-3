@@ -4,7 +4,8 @@ from torchvision import transforms
 from mmseg.structures import SegDataSample
 from segearthov3_segmentor import SegEarthOV3Segmentation
 
-img_path = 'resources/oem_koeln_50.tif'
+# img_path = 'resources/oem_koeln_50.tif'
+img_path = 'resources/837_8192_18944.tif'
 
 name_list = ['background', 'bareland,barren', 'grass', 'road', 'car',
              'tree,forest', 'water,river', 'cropland', 'building,roof,house']

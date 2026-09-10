@@ -360,6 +360,66 @@ class xBDDataset(BaseSegDataset):
 
 
 @DATASETS.register_module()
+class YZTOriginDataset(BaseSegDataset):
+    """YZT origin land-cover dataset.
+
+    The source labels use 0 as background and 1-7 as valid classes, so
+    ``reduce_zero_label`` is enabled to evaluate only the seven classes below.
+    """
+    METAINFO = dict(
+        classes=(
+            'Farmland',
+            'Forest',
+            'Grass',
+            'Wetland',
+            'Water',
+            'Residential',
+            'WasteLand',
+        ),
+        palette=[
+            [255, 255, 255],
+            [0, 255, 0],
+            [255, 0, 0],
+            [159, 129, 183],
+            [0, 0, 255],
+            [255, 255, 0],
+            [0, 255, 255],
+        ])
+
+    def __init__(self,
+                 img_suffix='.tif',
+                 seg_map_suffix='.tif',
+                 reduce_zero_label=True,
+                 **kwargs) -> None:
+        super().__init__(
+            img_suffix=img_suffix,
+            seg_map_suffix=seg_map_suffix,
+            reduce_zero_label=reduce_zero_label,
+            **kwargs)
+
+
+@DATASETS.register_module()
+class YZTOriginMultipleDataset(BaseSegDataset):
+    """YZT origin dataset for JSON-defined visual concepts.
+
+    This dataset intentionally does not define fixed ``METAINFO`` so configs can
+    provide concept classes from JSON without triggering subset validation
+    against the seven-class land-cover dataset.
+    """
+
+    def __init__(self,
+                 img_suffix='.tif',
+                 seg_map_suffix='.tif',
+                 reduce_zero_label=False,
+                 **kwargs) -> None:
+        super().__init__(
+            img_suffix=img_suffix,
+            seg_map_suffix=seg_map_suffix,
+            reduce_zero_label=reduce_zero_label,
+            **kwargs)
+
+
+@DATASETS.register_module()
 class CHN6_CUGDataset(BaseSegDataset):
     """CHN6-CUG dataset.
 

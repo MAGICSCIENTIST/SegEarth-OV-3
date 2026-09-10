@@ -28,6 +28,12 @@ from .model_misc import (
 )
 
 
+def _is_dynamo_compiling():
+    if hasattr(torch.compiler, "is_dynamo_compiling"):
+        return torch.compiler.is_dynamo_compiling()
+    return torch._dynamo.is_compiling()
+
+
 class TransformerDecoderLayer(nn.Module):
     def __init__(
         self,
@@ -336,7 +342,7 @@ class TransformerDecoder(nn.Module):
             self.compilable_cord_cache = self._get_coords(H, W, reference_boxes.device)
             self.compilable_stored_size = (H, W)
 
-        if torch.compiler.is_dynamo_compiling() or self.compilable_stored_size == (
+        if _is_dynamo_compiling() or self.compilable_stored_size == (
             H,
             W,
         ):
@@ -391,19 +397,19 @@ class TransformerDecoder(nn.Module):
             act_ckpt_enable=self.training and self.use_act_checkpoint,
         )  # bs, num_queries, H, n_heads
 
-        if not torch.compiler.is_dynamo_compiling():
+        if not _is_dynamo_compiling():
             assert deltas_x.shape[:3] == (bs, num_queries, W)
             assert deltas_y.shape[:3] == (bs, num_queries, H)
 
         B = deltas_y.unsqueeze(3) + deltas_x.unsqueeze(
             2
         )  # bs, num_queries, H, W, n_heads
-        if not torch.compiler.is_dynamo_compiling():
+        if not _is_dynamo_compiling():
             assert B.shape[:4] == (bs, num_queries, H, W)
         B = B.flatten(2, 3)  # bs, num_queries, H*W, n_heads
         B = B.permute(0, 3, 1, 2)  # bs, n_heads, num_queries, H*W
         B = B.contiguous()  # memeff attn likes ordered strides
-        if not torch.compiler.is_dynamo_compiling():
+        if not _is_dynamo_compiling():
             assert B.shape[2:] == (num_queries, H * W)
         return B
 

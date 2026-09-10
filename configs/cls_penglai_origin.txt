@@ -1,0 +1,7 @@
+Farmland
+Forest
+Grass
+Wetland
+Water
+Residential
+WasteLand

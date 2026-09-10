@@ -196,11 +196,13 @@ class Sam3Processor:
         out_logits = outputs["pred_logits"]
         out_masks = outputs["pred_masks"]
         out_probs = out_logits.sigmoid()
+        raw_object_score = out_logits.sigmoid()
         presence_score = outputs["presence_logit_dec"].sigmoid().unsqueeze(1)
         out_probs = (out_probs * presence_score).squeeze(-1)
 
         keep = out_probs > self.confidence_threshold
         out_probs = out_probs[keep]
+        raw_object_score = raw_object_score[keep]
         out_masks = out_masks[keep]
         out_bbox = out_bbox[keep]
 
@@ -233,4 +235,5 @@ class Sam3Processor:
         state["semantic_mask_logits"] = out_semantic_masks # for SS
         state["presence_score"] = presence_score.squeeze().squeeze()
         state["object_score"] = out_probs
+        state["object_score_raw"] = raw_object_score
         return state

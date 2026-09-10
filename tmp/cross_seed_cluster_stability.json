@@ -1,0 +1,13 @@
+{
+  "completed_seeds": [],
+  "pairwise": [],
+  "mean_ari": null,
+  "prompt_hard_iou_std": {},
+  "maximum_prompt_hard_iou_std": null,
+  "thresholds": {
+    "cluster_min_ari": 0.8,
+    "prompt_hard_iou_std_max": 0.01
+  },
+  "stable_response_prototypes": false,
+  "interpretation": "candidate_response_behaviors"
+}

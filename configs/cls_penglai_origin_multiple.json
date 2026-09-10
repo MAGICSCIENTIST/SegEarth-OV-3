@@ -1,0 +1,355 @@
+{
+  "version": "1.1",
+  "description": "Short visual prompts for SAM3 remote sensing inference",
+  "groups": [
+    {
+      "group_id": "A",
+      "group_name": "农业与植被",
+      "group_name_en": "Agriculture and Vegetation",
+      "concepts": [
+        {
+          "concept_id": "cultivated_field",
+          "concept_name": "耕作农田",
+          "tnls_sources": [
+            "旱地",
+            "水浇地"
+          ],
+          "tnls_dl3": [
+            9,
+            10,
+            11
+          ],
+          "prompts": [
+            "farmland",
+            "crop field"
+          ]
+        },
+        {
+          "concept_id": "crop_rows",
+          "concept_name": "作物种植行列",
+          "tnls_sources": [
+            "旱地",
+            "水浇地"
+          ],
+          "tnls_dl3": [
+            9,
+            10,
+            11
+          ],
+          "prompts": [
+            "crop rows",
+            "planting rows"
+          ]
+        },
+        {
+          "concept_id": "plowed_or_fallow_field",
+          "concept_name": "翻耕或休耕农田",
+          "tnls_sources": [
+            "旱地"
+          ],
+          "tnls_dl3": [
+            11
+          ],
+          "prompts": [
+            "plowed field",
+            "fallow field",
+            "bare farm field"
+          ]
+        },
+        {
+          "concept_id": "regular_orchard_rows",
+          "concept_name": "规则排列园地树木",
+          "tnls_sources": [
+            "果园",
+            "茶园",
+            "其他园地"
+          ],
+          "tnls_dl3": [
+            12,
+            13,
+            14,
+            15
+          ],
+          "prompts": [
+            "orchard",
+            "orchard rows",
+            "tree rows"
+          ]
+        },
+        {
+          "concept_id": "dense_tree_canopy",
+          "concept_name": "连续密集树冠",
+          "tnls_sources": [
+            "乔木林地",
+            "其他林地"
+          ],
+          "tnls_dl3": [
+            16,
+            17,
+            18,
+            19
+          ],
+          "prompts": [
+            "dense forest",
+            "tree canopy"
+          ]
+        },
+        {
+          "concept_id": "sparse_woody_vegetation",
+          "concept_name": "稀疏木本植被",
+          "tnls_sources": [
+            "其他林地",
+            "乔木林地"
+          ],
+          "tnls_dl3": [
+            16,
+            17,
+            18,
+            19
+          ],
+          "prompts": [
+            "sparse trees",
+            "scattered shrubs"
+          ]
+        },
+        {
+          "concept_id": "irregular_tree_crowns",
+          "concept_name": "不规则自然树冠",
+          "tnls_sources": [
+            "乔木林地"
+          ],
+          "tnls_dl3": [
+            16
+          ],
+          "prompts": [
+            "natural forest",
+            "irregular tree crowns"
+          ]
+        },
+        {
+          "concept_id": "herbaceous_cover",
+          "concept_name": "连续草本植被覆盖",
+          "tnls_sources": [
+            "其他草地"
+          ],
+          "tnls_dl3": [
+            20,
+            21,
+            22
+          ],
+          "prompts": [
+            "grassland",
+            "grass cover"
+          ]
+        }
+      ]
+    },
+    {
+      "group_id": "B",
+      "group_name": "农业设施与居民建设",
+      "group_name_en": "Agricultural Facilities and Residential Construction",
+      "concepts": [
+        {
+          "concept_id": "agricultural_facility",
+          "concept_name": "农业设施",
+          "tnls_sources": [
+            "设施农用地"
+          ],
+          "tnls_dl3": [
+            54
+          ],
+          "prompts": [
+            "greenhouse",
+            "farm facility",
+            "farm building"
+          ]
+        },
+        {
+          "concept_id": "rural_houses",
+          "concept_name": "农村住宅与庭院",
+          "tnls_sources": [
+            "农村宅基地"
+          ],
+          "tnls_dl3": [
+            28
+          ],
+          "prompts": [
+            "village houses",
+            "rural houses",
+            "house courtyards"
+          ]
+        },
+        {
+          "concept_id": "dense_residential",
+          "concept_name": "密集城镇住宅",
+          "tnls_sources": [
+            "城镇住宅用地"
+          ],
+          "tnls_dl3": [
+            27
+          ],
+          "prompts": [
+            "dense housing",
+            "residential buildings",
+            "apartment blocks"
+          ]
+        },
+        {
+          "concept_id": "large_roof_complex",
+          "concept_name": "大型屋顶建筑群",
+          "tnls_sources": [
+            "工业用地",
+            "物流仓储用地",
+            "商业服务业设施用地"
+          ],
+          "tnls_dl3": [
+            23,
+            24,
+            25,
+            29,
+            30,
+            31,
+            32,
+            33,
+            34
+          ],
+          "prompts": [
+            "large buildings",
+            "factory roofs",
+            "warehouse roofs"
+          ]
+        }
+      ]
+    },
+    {
+      "group_id": "C",
+      "group_name": "交通",
+      "group_name_en": "Transportation",
+      "concepts": [
+        {
+          "concept_id": "narrow_rural_road",
+          "concept_name": "狭窄农村道路",
+          "tnls_sources": [
+            "农村道路"
+          ],
+          "tnls_dl3": [
+            40
+          ],
+          "prompts": [
+            "rural road",
+            "narrow road",
+            "farm road"
+          ]
+        },
+        {
+          "concept_id": "wide_paved_road",
+          "concept_name": "宽阔硬化道路",
+          "tnls_sources": [
+            "公路用地",
+            "城镇村道路用地"
+          ],
+          "tnls_dl3": [
+            36,
+            37,
+            38,
+            39,
+            41,
+            42,
+            43
+          ],
+          "prompts": [
+            "paved road",
+            "wide road",
+            "highway"
+          ]
+        },
+        {
+          "concept_id": "railway_corridor",
+          "concept_name": "铁路走廊",
+          "tnls_sources": [
+            "铁路用地"
+          ],
+          "tnls_dl3": [
+            35
+          ],
+          "prompts": [
+            "railway tracks",
+            "railroad"
+          ]
+        }
+      ]
+    },
+    {
+      "group_id": "D",
+      "group_name": "水体与裸露地表",
+      "group_name_en": "Water Bodies and Exposed Surfaces",
+      "concepts": [
+        {
+          "concept_id": "pond_or_reservoir",
+          "concept_name": "坑塘或水库",
+          "tnls_sources": [
+            "坑塘水面",
+            "水库水面",
+            "养殖坑塘"
+          ],
+          "tnls_dl3": [
+            45,
+            46,
+            47,
+            48,
+            49,
+            51,
+            52
+          ],
+          "prompts": [
+            "pond",
+            "reservoir",
+            "fish pond"
+          ]
+        },
+        {
+          "concept_id": "river_or_canal",
+          "concept_name": "河流或沟渠",
+          "tnls_sources": [
+            "河流水面",
+            "沟渠"
+          ],
+          "tnls_dl3": [
+            44,
+            50
+          ],
+          "prompts": [
+            "river",
+            "canal",
+            "water channel"
+          ]
+        },
+        {
+          "concept_id": "bare_or_excavated_surface",
+          "concept_name": "裸露或开挖地表",
+          "tnls_sources": [
+            "裸土地",
+            "采矿用地",
+            "裸岩石砾地"
+          ],
+          "tnls_dl3": [
+            26,
+            53,
+            55,
+            56,
+            57,
+            58,
+            59
+          ],
+          "prompts": [
+            "bare ground",
+            "excavated ground",
+            "quarry",
+            "exposed rock"
+          ]
+        }
+      ]
+    }
+  ]
+}
+

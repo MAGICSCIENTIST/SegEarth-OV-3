@@ -1,0 +1,457 @@
+{
+  "version": "1.3",
+  "description": "Final-score parameters for diagnose_sam3 concept5. Presence and prompt weights calibrate probability in log-odds space.",
+  "source_config": "configs/cfg_penglai_origin_multiple_learnable_mixed_loss.py",
+  "prompt_config": "configs/cls_penglai_origin_multiple_4.json",
+  "score_rule": "per prompt: sigmoid(logit(fused_probability) + presence_gain * (presence_score - presence_bias) + log(prompt_weight)); per concept: configured prompt aggregation followed by concept_weight; prediction threshold: max(prob_thd, concept_threshold, analysis_threshold in diagnose).",
+  "default": {
+    "confidence_threshold": 0.1,
+    "use_sem_seg": true,
+    "use_transformer_decoder": true,
+    "use_presence_score": true,
+    "instance_filter_use_presence": true,
+    "fusion_mode": "max",
+    "semantic_weight": 0.5,
+    "presence_gain": 0.0,
+    "presence_bias": 0.5,
+    "prompt_weight": 1.0,
+    "prompt_threshold": 0.0,
+    "min_prompt_component_area": 0.0,
+    "prompt_fusion_mode": "max",
+    "concept_weight": 1.0,
+    "concept_threshold": 0.0,
+    "prob_thd": 0.1
+  },
+  "prompt_params": {
+    "semantic_weight": {
+      "cultivated_field": {
+        "cropland": 0.5,
+        "crop field": 0.5
+      },
+      "crop_rows": {
+        "crop rows": 0.3,
+        "rows of crops": 0.5
+      },
+      "plowed_or_fallow_field": {
+        "plowed field": 0.5,
+        "fallow field": 0.5
+      },
+      "dense_tree_canopy": {
+        "forest": 0.5,
+        "woodland": 0.5,
+        "trees": 0.5
+      },
+      "sparse_woody_vegetation": {
+        "scattered trees": 0.5,
+        "shrubs": 0.5,
+        "shrubland": 0.5
+      },     
+      "herbaceous_cover": {
+        "grassland": 0.5,
+        "grass": 0.5,
+        "meadow": 0.5
+      },
+      "agricultural_facility": {
+        "greenhouse": 0.5,
+        "farm building": 0.5,
+        "agricultural building": 0.5
+      },
+      "living_houses": {
+        "houses": 0.5,
+        "building": 0.5
+      },   
+      "large_roof_complex": {
+        "factory": 0.5,
+        "warehouse": 0.5
+      },
+      "narrow_rural_road": {
+        "rural road": 0.5,
+        "farm road": 0.5,
+        "dirt road": 0.5
+      },
+      "wide_paved_road": {
+        "paved road": 0.5,
+        "wide road": 0.5,
+        "highway": 0.5
+      },
+      "pond_or_reservoir": {
+        "pond": 0.5,
+        "reservoir": 0.5,
+        "lake": 0.5,
+        "fish pond": 0.5
+      },
+      "river_or_canal": {
+        "river": 0.5,
+        "canal": 0.5,
+        "stream": 0.5
+      },
+      "bare_or_excavated_surface": {
+        "bare soil": 0.5
+      }
+    },
+    "presence_gain": {
+      "cultivated_field": {
+        "cropland": 2.0,
+        "crop field": 2.0
+      },
+      "crop_rows": {
+        "crop rows": 2.0,
+        "rows of crops": 2.0
+      },
+      "plowed_or_fallow_field": {
+        "plowed field": 2.0,
+        "fallow field": 2.0
+      },
+      "dense_tree_canopy": {
+        "forest": 0.2,
+        "woodland": 0.2,
+        "trees": 0.2
+      },
+      "sparse_woody_vegetation": {
+        "scattered trees": 2.0,
+        "shrubs": 2.0,
+        "shrubland": 2.0
+      },    
+      "herbaceous_cover": {
+        "grassland": 2.0,
+        "grass": 2.0,
+        "meadow": 2.0
+      },
+      "agricultural_facility": {
+        "greenhouse": 2.0,
+        "farm building": 2.0,
+        "agricultural building": 2.0
+      },
+      "living_houses": {
+        "houses": 2.0,
+        "building": 2.0
+      },  
+      "large_roof_complex": {
+        "factory": 2.0,
+        "warehouse": 2.0
+      },
+      "narrow_rural_road": {
+        "rural road": 2.0,
+        "farm road": 2.0,
+        "dirt road": 2.0
+      },
+      "wide_paved_road": {
+        "paved road": 2.0,
+        "wide road": 2.0,
+        "highway": 2.0
+      },
+      "pond_or_reservoir": {
+        "pond": 2.0,
+        "reservoir": 2.0,
+        "lake": 2.0,
+        "fish pond": 2.0
+      },
+      "river_or_canal": {
+        "river": 2.0,
+        "canal": 2.0,
+        "stream": 2.0
+      },
+      "bare_or_excavated_surface": {
+        "bare soil": 2.0
+      }
+    },
+    "presence_bias": {
+      "cultivated_field": {
+        "cropland": 0.846,
+        "crop field": 0.846
+      },
+      "crop_rows": {
+        "crop rows": 0.846,
+        "rows of crops": 0.846
+      },
+      "plowed_or_fallow_field": {
+        "plowed field": 0.846,
+        "fallow field": 0.846
+      },
+      "dense_tree_canopy": {
+        "forest": 0,
+        "woodland": 0,
+        "trees": 0
+      },
+      "sparse_woody_vegetation": {
+        "scattered trees": 0.846,
+        "shrubs": 0.846,
+        "shrubland": 0.846
+      },    
+      "herbaceous_cover": {
+        "grassland": 0.846,
+        "grass": 0.846,
+        "meadow": 0.846
+      },
+      "agricultural_facility": {
+        "greenhouse": 0.846,
+        "farm building": 0.846,
+        "agricultural building": 0.846
+      },
+      "living_houses": {
+        "houses": 0.846,
+        "building" : 0.846
+      },      
+      "large_roof_complex": {
+        "factory": 0.846,
+        "warehouse": 0.846
+      },
+      "narrow_rural_road": {
+        "rural road": 0.846,
+        "farm road": 0.846,
+        "dirt road": 0.846
+      },
+      "wide_paved_road": {
+        "paved road": 0.846,
+        "wide road": 0.846,
+        "highway": 0.846
+      },
+      "pond_or_reservoir": {
+        "pond": 0.846,
+        "reservoir": 0.846,
+        "lake": 0.846,
+        "fish pond": 0.846
+      },
+      "river_or_canal": {
+        "river": 0.846,
+        "canal": 0.846,
+        "stream": 0.846
+      },
+      "bare_or_excavated_surface": {
+        "bare soil": 0.846
+      }
+    },
+    "prompt_weight": {
+      "cultivated_field": {
+        "cropland": 1.0,
+        "crop field": 1.0
+      },
+      "crop_rows": {
+        "crop rows": 1.0,
+        "rows of crops": 1.0
+      },
+      "plowed_or_fallow_field": {
+        "plowed field": 1.0,
+        "fallow field": 1.0
+      },
+      "dense_tree_canopy": {
+        "forest": 1.0,
+        "woodland": 1.0,
+        "trees": 1.0
+      },
+      "sparse_woody_vegetation": {
+        "scattered trees": 1.0,
+        "shrubs": 1.0,
+        "shrubland": 1.0
+      },     
+      "herbaceous_cover": {
+        "grassland": 1.0,
+        "grass": 1.0,
+        "meadow": 1.0
+      },
+      "agricultural_facility": {
+        "greenhouse": 1.0,
+        "farm building": 1.0,
+        "agricultural building": 1.0
+      },
+      "living_houses": {
+        "houses": 1.0,
+        "building": 1.0
+      },  
+      "large_roof_complex": {
+        "factory": 1.0,
+        "warehouse": 1.0
+      },
+      "narrow_rural_road": {
+        "rural road": 1.0,
+        "farm road": 1.0,
+        "dirt road": 1.0
+      },
+      "wide_paved_road": {
+        "paved road": 1.0,
+        "wide road": 1.0,
+        "highway": 1.0
+      },
+      "pond_or_reservoir": {
+        "pond": 1.0,
+        "reservoir": 1.0,
+        "lake": 1.0,
+        "fish pond": 1.0
+      },
+      "river_or_canal": {
+        "river": 1.0,
+        "canal": 1.0,
+        "stream": 1.0
+      },
+      "bare_or_excavated_surface": {
+        "bare soil": 1.0
+      }
+    },
+    "prompt_threshold": {
+      "cultivated_field": {
+        "cropland": 0.0,
+        "crop field": 0.0
+      },
+      "crop_rows": {
+        "crop rows": 0.0,
+        "rows of crops": 0.0
+      },
+      "plowed_or_fallow_field": {
+        "plowed field": 0.0,
+        "fallow field": 0.0
+      },
+      "dense_tree_canopy": {
+        "forest": 0.0,
+        "woodland": 0.0,
+        "trees": 0.0
+      },
+      "sparse_woody_vegetation": {
+        "scattered trees": 0.0,
+        "shrubs": 0.0,
+        "shrubland": 0.0
+      },    
+      "herbaceous_cover": {
+        "grassland": 0.0,
+        "grass": 0.0,
+        "meadow": 0.0
+      },
+      "agricultural_facility": {
+        "greenhouse": 0.0,
+        "farm building": 0.0,
+        "agricultural building": 0.0
+      },
+      "living_houses": {
+        "houses": 0.0,
+        "building": 0.0
+      },     
+      "large_roof_complex": {
+        "factory": 0.0,
+        "warehouse": 0.0
+      },
+      "narrow_rural_road": {
+        "rural road": 0.0,
+        "farm road": 0.0,
+        "dirt road": 0.0
+      },
+      "wide_paved_road": {
+        "paved road": 0.0,
+        "wide road": 0.0,
+        "highway": 0.0
+      },
+      "pond_or_reservoir": {
+        "pond": 0.0,
+        "reservoir": 0.0,
+        "lake": 0.0,
+        "fish pond": 0.0
+      },
+      "river_or_canal": {
+        "river": 0.0,
+        "canal": 0.0,
+        "stream": 0.0
+      },
+      "bare_or_excavated_surface": {
+        "bare soil": 0.0
+      }
+    },
+    "min_prompt_component_area": {
+      "cultivated_field": {
+        "cropland": 0.0,
+        "crop field": 0.0
+      },
+      "crop_rows": {
+        "crop rows": 0.0,
+        "rows of crops": 0.0
+      },
+      "plowed_or_fallow_field": {
+        "plowed field": 0.0,
+        "fallow field": 0.0
+      },
+      "dense_tree_canopy": {
+        "forest": 0.0,
+        "woodland": 0.0,
+        "trees": 0.0
+      },
+      "sparse_woody_vegetation": {
+        "scattered trees": 0.0,
+        "shrubs": 0.0,
+        "shrubland": 0.0
+      },     
+      "herbaceous_cover": {
+        "grassland": 0.0,
+        "grass": 0.0,
+        "meadow": 0.0
+      },
+      "agricultural_facility": {
+        "greenhouse": 0.0,
+        "farm building": 0.0,
+        "agricultural building": 0.0
+      },
+      "living_houses": {
+        "houses": 0.0,
+        "building": 0.0
+      },   
+      "large_roof_complex": {
+        "factory": 0.0,
+        "warehouse": 0.0
+      },
+      "narrow_rural_road": {
+        "rural road": 0.0,
+        "farm road": 0.0,
+        "dirt road": 0.0
+      },
+      "wide_paved_road": {
+        "paved road": 0.0,
+        "wide road": 0.0,
+        "highway": 0.0
+      },
+      "pond_or_reservoir": {
+        "pond": 0.0,
+        "reservoir": 0.0,
+        "lake": 0.0,
+        "fish pond": 0.0
+      },
+      "river_or_canal": {
+        "river": 0.0,
+        "canal": 0.0,
+        "stream": 0.0
+      },
+      "bare_or_excavated_surface": {
+        "bare soil": 0.0
+      }
+    }
+  },
+  "concept_params": {
+    "concept_weight": {
+      "cultivated_field": 1.0,
+      "crop_rows": 1.0,
+      "plowed_or_fallow_field": 1.0,
+      "dense_tree_canopy": 1.0,
+      "sparse_woody_vegetation": 1.0,
+      "herbaceous_cover": 1.0,
+      "agricultural_facility": 1.0,
+      "living_houses": 1.0,     
+      "large_roof_complex": 1.0,
+      "narrow_rural_road": 1.0,
+      "wide_paved_road": 1.0,
+      "pond_or_reservoir": 1.0,
+      "river_or_canal": 1.0,
+      "bare_or_excavated_surface": 1.0
+    },
+    "concept_threshold": {
+      "cultivated_field": 0.0,
+      "crop_rows": 0.0,
+      "plowed_or_fallow_field": 0.0,
+      "dense_tree_canopy": 0.0,
+      "sparse_woody_vegetation": 0.0,   
+      "herbaceous_cover": 0.0,
+      "agricultural_facility": 0.0,
+      "living_houses": 0.0,      
+      "large_roof_complex": 0.0,
+      "narrow_rural_road": 0.0,
+      "wide_paved_road": 0.0,
+      "pond_or_reservoir": 0.0,
+      "river_or_canal": 0.0,
+      "bare_or_excavated_surface": 0.0
+    }
+  }
+}

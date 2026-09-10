@@ -7,11 +7,24 @@ model = dict(
     prob_thd=0.5,
 )
 
+# Preserve the original multiclass IoUMetric and add concept-preaggregation
+# metrics for every individual text prompt.  With reduce_zero_label=True,
+# LoveDA GT classes are zero based (background=0, ..., agricultural=6).
+test_evaluator = [
+    dict(type='IoUMetric', iou_metrics=['mIoU', 'mFscore']),
+    dict(
+        type='PromptIoUMetric',
+        concept_path='./configs/cls_loveda.txt',
+        score_threshold=0.5,
+        ignore_index=255),
+]
+
 # dataset settings
 # Category labels: background – 1, building – 2, road – 3, water – 4, barren – 5,forest – 6, agriculture – 7. 
 # And the no-data regions were assigned 0 which should be ignored. 
 dataset_type = 'LoveDADataset'
-data_root = 'data/LoveDA'
+# data_root = 'data/LoveDA'
+data_root = r'E:\data\loveDa'
 
 test_pipeline = [
     dict(type='LoadImageFromFile'),

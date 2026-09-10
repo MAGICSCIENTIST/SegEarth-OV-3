@@ -1,0 +1,36 @@
+  {
+    "group_id": "A",
+    "group_name": "建筑物",
+    "group_name_en": "buildinds",
+    "concepts": []
+  },
+  {
+    "group_id": "A",
+    "group_name": "水体",
+    "group_name_en": "water",
+    "concepts": []
+  },
+  {
+    "group_id": "A",
+    "group_name": "道路",
+    "group_name_en": "road",
+    "concepts": ["rural road"]
+  },
+  {
+    "group_id": "A",
+    "group_name": "耕地",
+    "group_name_en": "road",
+    "concepts": []
+  },
+  {
+    "group_id": "A",
+    "group_name": "草地",
+    "group_name_en": "road",
+    "concepts": []
+  },
+  {
+    "group_id": "林地",
+    "group_name": " ",
+    "group_name_en": "forest",
+    "concepts": []
+  }

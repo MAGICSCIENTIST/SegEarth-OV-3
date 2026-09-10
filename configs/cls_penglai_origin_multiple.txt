@@ -1,0 +1,7 @@
+forest land,forest,woodland
+grassland,
+cropland,farmland,cultivated land
+orchard,fruit tree plantation
+built-up land,urban land,artificial surface
+water body,water,river
+bare land,unused land,barren land

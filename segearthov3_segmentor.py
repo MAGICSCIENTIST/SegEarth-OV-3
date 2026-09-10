@@ -7,6 +7,7 @@ from mmengine.structures import PixelData
 from mmseg.registry import MODELS
 from PIL import Image
 
+from concept_utils import is_json_path, load_concepts
 from sam3 import build_sam3_image_model
 from sam3.model.sam3_image_processor import Sam3Processor
 
@@ -23,6 +24,7 @@ class SegEarthOV3Segmentation(BaseSegmentor):
                  use_sem_seg=True,
                  use_presence_score=True,
                  use_transformer_decoder=True,
+                 prompt_aggregation='max',
                  **kwargs):
         super().__init__()
         
@@ -34,7 +36,10 @@ class SegEarthOV3Segmentation(BaseSegmentor):
             device="cuda"
         )
         self.processor = Sam3Processor(model, confidence_threshold=confidence_threshold, device=device)
-        self.query_words, self.query_idx = get_cls_idx(classname_path)
+        cls_info = get_cls_idx(classname_path)
+        self.query_words, self.query_idx = cls_info[:2]
+        self.concepts = cls_info[2] if len(cls_info) > 2 else None
+        self.is_concept_json = self.concepts is not None
         self.num_cls = max(self.query_idx) + 1
         self.num_queries = len(self.query_idx)
         self.query_idx = torch.Tensor(self.query_idx).to(torch.int64).to(device)
@@ -47,11 +52,12 @@ class SegEarthOV3Segmentation(BaseSegmentor):
         self.use_sem_seg = use_sem_seg
         self.use_presence_score = use_presence_score
         self.use_transformer_decoder = use_transformer_decoder
+        self.prompt_aggregation = prompt_aggregation
 
     def _inference_single_view(self, image):
         """Inference on a single PIL image or crop patch."""
         w, h = image.size
-        seg_logits = torch.zeros((self.num_queries, h, w), device=self.device)
+        prompt_scores = torch.zeros((self.num_queries, h, w), device=self.device)
 
         with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
             inference_state = self.processor.set_image(image)
@@ -77,7 +83,7 @@ class SegEarthOV3Segmentation(BaseSegmentor):
                                     align_corners=False
                                 ).squeeze()
 
-                            seg_logits[query_idx] = torch.max(seg_logits[query_idx], instance_logits * instance_score)
+                            prompt_scores[query_idx] = torch.max(prompt_scores[query_idx], instance_logits * instance_score)
                     
                 if self.use_sem_seg:
                     semantic_logits = inference_state['semantic_mask_logits']
@@ -89,12 +95,44 @@ class SegEarthOV3Segmentation(BaseSegmentor):
                                 align_corners=False
                             ).squeeze()
                     
-                    seg_logits[query_idx] = torch.max(seg_logits[query_idx], semantic_logits)
+                    prompt_scores[query_idx] = torch.max(prompt_scores[query_idx], semantic_logits)
                 
                 if self.use_presence_score:
-                    seg_logits[query_idx] = seg_logits[query_idx] * inference_state["presence_score"]
+                    prompt_scores[query_idx] = prompt_scores[query_idx] * inference_state["presence_score"]
                 
-        return seg_logits
+        return prompt_scores
+
+    def aggregate_prompt_scores(self,
+                                prompt_scores: torch.Tensor,
+                                mode: str = 'max',
+                                prompt_weights: torch.Tensor | None = None
+                                ) -> torch.Tensor:
+        """Aggregate prompt-level scores into class-level scores."""
+        class_scores = []
+
+        for class_id in range(self.num_cls):
+            mask = self.query_idx == class_id
+            current_scores = prompt_scores[mask]
+
+            if current_scores.shape[0] == 0:
+                score = torch.zeros_like(prompt_scores[0])
+            elif mode == 'max':
+                score = current_scores.max(dim=0).values
+            elif mode == 'mean':
+                score = current_scores.mean(dim=0)
+            elif mode == 'weighted':
+                if prompt_weights is None:
+                    raise ValueError(
+                        'prompt_weights is required for weighted fusion.')
+                current_weights = torch.softmax(prompt_weights[mask], dim=0)
+                score = (current_scores *
+                         current_weights[:, None, None]).sum(dim=0)
+            else:
+                raise ValueError(f'Unsupported prompt fusion mode: {mode}')
+
+            class_scores.append(score)
+
+        return torch.stack(class_scores, dim=0)
 
     def slide_inference(self, image, stride, crop_size):
         """Inference by sliding-window with overlap using PIL cropping."""
@@ -162,35 +200,31 @@ class SegEarthOV3Segmentation(BaseSegmentor):
 
             # Determine inference mode
             if self.slide_crop > 0 and (self.slide_crop < image.size[0] or self.slide_crop < image.size[1]):
-                seg_logits = self.slide_inference(image, self.slide_stride, self.slide_crop)
+                prompt_scores = self.slide_inference(image, self.slide_stride, self.slide_crop)
             else:
-                seg_logits = self._inference_single_view(image)
+                prompt_scores = self._inference_single_view(image)
 
             # Resize to original shape if necessary (e.g. padding effects)
-            if seg_logits.shape[-2:] != ori_shape:
-                seg_logits = F.interpolate(
-                    seg_logits.unsqueeze(0), 
+            if prompt_scores.shape[-2:] != ori_shape:
+                prompt_scores = F.interpolate(
+                    prompt_scores.unsqueeze(0),
                     size=ori_shape, 
                     mode='bilinear', 
                     align_corners=False
                 ).squeeze(0)
-            
-            # Post-processing
-            if self.num_cls != self.num_queries:
-                seg_logits = seg_logits.unsqueeze(0)
-                cls_index = nn.functional.one_hot(self.query_idx)
-                cls_index = cls_index.T.view(self.num_cls, len(self.query_idx), 1, 1)
-                seg_logits = (seg_logits * cls_index).max(1)[0]
-                seg_pred = seg_logits.argmax(0, keepdim=True)
 
-            seg_pred = torch.argmax(seg_logits, dim=0)
+            raw_prompt_scores = prompt_scores.clone()
+            class_scores = self.aggregate_prompt_scores(
+                prompt_scores, mode=self.prompt_aggregation)
+            seg_pred = torch.argmax(class_scores, dim=0)
             
             # Apply probability threshold
-            max_vals = seg_logits.max(0)[0]
+            max_vals = class_scores.max(0)[0]
             seg_pred[max_vals < self.prob_thd] = self.bg_idx
 
             data_samples[i].set_data({
-                'seg_logits': PixelData(**{'data': seg_logits}),
+                'seg_logits': PixelData(**{'data': class_scores}),
+                'raw_prompt_scores': PixelData(**{'data': raw_prompt_scores}),
                 'pred_sem_seg': PixelData(**{'data': seg_pred.unsqueeze(0)})
             })
             
@@ -218,6 +252,18 @@ class SegEarthOV3Segmentation(BaseSegmentor):
 
 
 def get_cls_idx(path):
+    if is_json_path(path):
+        concepts = load_concepts(path)
+        class_names, class_indices = [], []
+        for idx, concept in enumerate(concepts):
+            prompts = concept.get('prompts', [])
+            if isinstance(prompts, str):
+                prompts = [prompts]
+            prompts = [prompt.strip() for prompt in prompts if prompt.strip()]
+            class_names += prompts
+            class_indices += [idx for _ in range(len(prompts))]
+        return class_names, class_indices, concepts
+
     with open(path, 'r') as f:
         name_sets = f.readlines()
     num_cls = len(name_sets)
