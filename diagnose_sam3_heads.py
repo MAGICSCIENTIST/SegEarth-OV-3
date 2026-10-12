@@ -8,13 +8,20 @@ import shutil
 from collections import deque
 from pathlib import Path
 from typing import Any
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn.functional as F
 from PIL import Image
+
+from tools.visual_utils import (
+    save_probability_map,
+    render_binary_overlay,
+    gt_label_color,
+    save_gt_overview,
+    save_normal_panel,
+    metric_text,
+    save_panel,
+)
 
 from sam3 import build_sam3_image_model
 from sam3.model.sam3_image_processor import Sam3Processor
@@ -580,19 +587,6 @@ def apply_final_score_params(
     return fused, final_score, resolved
 
 
-def save_probability_map(
-    probability: np.ndarray,
-    output_path: Path,
-) -> None:
-    plt.imsave(
-        output_path,
-        probability,
-        vmin=0.0,
-        vmax=1.0,
-        cmap="viridis",
-    )
-
-
 def save_score_npz(
     score: np.ndarray,
     output_path: Path,
@@ -601,294 +595,6 @@ def save_score_npz(
         output_path,
         score=score.astype(np.float16, copy=False),
     )
-
-
-def render_binary_overlay(
-    image: Image.Image,
-    mask: np.ndarray | None,
-    color: tuple[int, int, int],
-    alpha: float = 0.55,
-) -> np.ndarray:
-    raster = np.asarray(image.convert("RGB"), dtype=np.uint8)
-    overlay = raster.copy()
-    if mask is None:
-        return overlay
-    mask = mask.astype(bool)
-    color_array = np.asarray(color, dtype=np.float32)
-    blended = (
-        raster.astype(np.float32) * (1.0 - alpha)
-        + color_array[None, None, :] * alpha
-    )
-    overlay[mask] = blended[mask].astype(np.uint8)
-    return overlay
-
-
-def gt_label_color(label: int) -> tuple[int, int, int]:
-    return (
-        int((37 * label + 41) % 256),
-        int((97 * label + 113) % 256),
-        int((53 * label + 197) % 256),
-    )
-
-
-def save_gt_overview(
-    image: Image.Image,
-    gt_label: np.ndarray | None,
-    ignore_index: int,
-    output_path: Path,
-    alpha: float = 0.45,
-) -> None:
-    if gt_label is None:
-        return
-
-    raster = np.asarray(image.convert("RGB"), dtype=np.float32)
-    valid_mask = gt_label != ignore_index
-    labels = [
-        int(label)
-        for label in sorted(np.unique(gt_label[valid_mask]).tolist())
-    ] if valid_mask.any() else []
-
-    overlay = raster.copy()
-    for label in labels:
-        mask = gt_label == label
-        color = np.asarray(gt_label_color(label), dtype=np.float32)
-        overlay[mask] = raster[mask] * (1.0 - alpha) + color * alpha
-    overlay = np.clip(overlay, 0, 255).astype(np.uint8)
-
-    legend_height = max(5.0, 0.34 * max(len(labels), 1) + 1.0)
-    fig, axes = plt.subplots(
-        1,
-        2,
-        figsize=(12, legend_height),
-        gridspec_kw={"width_ratios": [3.0, 1.0]},
-    )
-
-    axes[0].imshow(overlay)
-    axes[0].set_title("Input + GT overlay")
-    axes[0].axis("off")
-
-    axes[1].set_xlim(0, 1)
-    axes[1].set_ylim(0, 1)
-    axes[1].axis("off")
-    axes[1].set_title("GT legend")
-
-    if labels:
-        step = 1.0 / (len(labels) + 1)
-        for index, label in enumerate(labels):
-            y_pos = 1.0 - (index + 1) * step
-            color = np.asarray(gt_label_color(label), dtype=np.float32) / 255.0
-            axes[1].scatter(
-                [0.12],
-                [y_pos],
-                marker="s",
-                s=140,
-                color=[color],
-            )
-            axes[1].text(
-                0.22,
-                y_pos,
-                f"GT {label}",
-                ha="left",
-                va="center",
-                family="monospace",
-                fontsize=10,
-            )
-    else:
-        axes[1].text(
-            0.05,
-            0.95,
-            "No valid GT labels",
-            ha="left",
-            va="top",
-            family="monospace",
-            fontsize=10,
-        )
-
-    fig.tight_layout()
-    fig.savefig(output_path, dpi=160, bbox_inches="tight")
-    plt.close(fig)
-
-
-def save_normal_panel(
-    image: Image.Image,
-    prompt: str,
-    output_path: Path,
-    gt_mask: np.ndarray | None = None,
-    pred_mask: np.ndarray | None = None,
-) -> None:
-    """Save the compact GT/prediction overlay view used during validation."""
-    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
-
-    axes[0].imshow(render_binary_overlay(image, gt_mask, (255, 64, 64)))
-    axes[0].set_title("GT mask")
-
-    axes[1].imshow(render_binary_overlay(image, pred_mask, (64, 255, 96)))
-    axes[1].set_title("Pred mask")
-
-    for axis in axes.flat:
-        axis.axis("off")
-
-    fig.suptitle(f'Prompt: "{prompt}"', fontsize=14)
-    fig.tight_layout()
-    fig.savefig(output_path, dpi=160, bbox_inches="tight")
-    plt.close(fig)
-
-
-def metric_text(metrics: dict[str, Any] | None, threshold: float) -> str:
-    if not metrics:
-        return "GT metrics unavailable"
-
-    def pct(value: Any) -> str:
-        if value is None:
-            return "nan"
-        if isinstance(value, float) and np.isnan(value):
-            return "nan"
-        return f"{100.0 * float(value):.2f}"
-
-    return "\n".join(
-        [
-            f"threshold = {threshold:.3f}",
-            f"mIoU = {pct(metrics.get('miou'))}",
-            f"IoU = {pct(metrics.get('iou'))}",
-            f"Precision = {pct(metrics.get('precision'))}",
-            f"Recall = {pct(metrics.get('recall'))}",
-            f"F1 = {pct(metrics.get('fscore'))}",
-            f"GT area = {pct(metrics.get('label_area_ratio'))}",
-            f"Pred area = {pct(metrics.get('pred_area_ratio'))}",
-        ]
-    )
-
-
-def save_panel(
-    image: Image.Image,
-    semantic: np.ndarray,
-    instance_raw: np.ndarray,
-    instance_gated: np.ndarray,
-    fused_before_presence: np.ndarray,
-    final_score: np.ndarray,
-    presence_score: float,
-    prompt: str,
-    output_path: Path,
-    gt_mask: np.ndarray | None = None,
-    pred_mask: np.ndarray | None = None,
-    final_metrics: dict[str, Any] | None = None,
-    prediction_threshold: float = 0.0,
-) -> None:
-    if gt_mask is None:
-        fig, axes = plt.subplots(2, 3, figsize=(15, 9))
-
-        axes[0, 0].imshow(image)
-        axes[0, 0].set_title("Input image")
-
-        axes[0, 1].imshow(
-            semantic,
-            vmin=0.0,
-            vmax=1.0,
-            cmap="viridis",
-        )
-        axes[0, 1].set_title("Semantic score")
-
-        axes[0, 2].imshow(
-            instance_raw,
-            vmin=0.0,
-            vmax=1.0,
-            cmap="viridis",
-        )
-        axes[0, 2].set_title("Raw instance score")
-
-        axes[1, 0].imshow(
-            instance_gated,
-            vmin=0.0,
-            vmax=1.0,
-            cmap="viridis",
-        )
-        axes[1, 0].set_title("Presence-gated instance")
-
-        axes[1, 1].imshow(
-            fused_before_presence,
-            vmin=0.0,
-            vmax=1.0,
-            cmap="viridis",
-        )
-        axes[1, 1].set_title("Fusion before presence")
-
-        axes[1, 2].imshow(
-            final_score,
-            vmin=0.0,
-            vmax=1.0,
-            cmap="viridis",
-        )
-        axes[1, 2].set_title(f"Final score\npresence={presence_score:.4f}")
-    else:
-        fig, axes = plt.subplots(3, 3, figsize=(15, 13))
-
-        axes[0, 0].imshow(image)
-        axes[0, 0].set_title("Input image")
-
-        axes[0, 1].imshow(render_binary_overlay(image, gt_mask, (255, 64, 64)))
-        axes[0, 1].set_title("GT mask")
-
-        axes[0, 2].imshow(
-            semantic,
-            vmin=0.0,
-            vmax=1.0,
-            cmap="viridis",
-        )
-        axes[0, 2].set_title("Semantic score")
-
-        axes[1, 0].imshow(
-            instance_raw,
-            vmin=0.0,
-            vmax=1.0,
-            cmap="viridis",
-        )
-        axes[1, 0].set_title("Raw instance score")
-
-        axes[1, 1].imshow(
-            instance_gated,
-            vmin=0.0,
-            vmax=1.0,
-            cmap="viridis",
-        )
-        axes[1, 1].set_title("Presence-gated instance")
-
-        axes[1, 2].imshow(
-            fused_before_presence,
-            vmin=0.0,
-            vmax=1.0,
-            cmap="viridis",
-        )
-        axes[1, 2].set_title("Fusion before presence")
-
-        axes[2, 0].imshow(
-            final_score,
-            vmin=0.0,
-            vmax=1.0,
-            cmap="viridis",
-        )
-        axes[2, 0].set_title(f"Final score\npresence={presence_score:.4f}")
-
-        axes[2, 1].imshow(render_binary_overlay(image, pred_mask, (64, 255, 96)))
-        axes[2, 1].set_title("Pred mask")
-
-        axes[2, 2].text(
-            0.02,
-            0.98,
-            metric_text(final_metrics, prediction_threshold),
-            ha="left",
-            va="top",
-            family="monospace",
-            fontsize=10,
-        )
-        axes[2, 2].set_title("Final metrics")
-
-    for axis in axes.flat:
-        axis.axis("off")
-
-    fig.suptitle(f'Prompt: "{prompt}"', fontsize=14)
-    fig.tight_layout()
-    fig.savefig(output_path, dpi=160, bbox_inches="tight")
-    plt.close(fig)
 
 
 def build_gt_index(gt_dir: Path | None) -> dict[str, Path]:

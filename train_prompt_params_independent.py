@@ -13,12 +13,13 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from PIL import Image
+from tools.visual_utils import panel_map
 
 from concept_utils import is_json_path, load_concepts
 from metrics_reporting import MetricsReporter
 import train_learnable_params as shared
-from diagnose_sam3_heads import (
-    binary_metrics,
+from diagnose_sam3_heads import binary_metrics
+from tools.visual_utils import (
     save_gt_overview,
     save_normal_panel,
     save_panel,
@@ -126,10 +127,11 @@ def parse_args():
     parser.add_argument('--save-dir', default='weights/prompt_independent')
     parser.add_argument(
         '--prompt-head-cache',
-        required=True,
+        default=None,
         help=(
-            'Directory containing cached SAM3 prompt heads. It is built only '
-            'when the directory does not exist.'))
+            'Optional SAM3 head cache directory. When omitted, extract heads '
+            'online without reading or writing a disk cache. When supplied, '
+            'build it only if the directory does not exist.'))
     parser.add_argument('--epochs-per-prompt', type=int, default=None)
     parser.add_argument('--lr', type=float, default=None)
     parser.add_argument('--patience', type=int, default=None)
@@ -221,7 +223,10 @@ def parse_args():
     parser.add_argument('--resume', action='store_true')
     parser.add_argument(
         '--cfg-options', nargs='+', action='append', default=None)
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.rebuild_cache and not args.prompt_head_cache:
+        parser.error('--rebuild-cache requires --prompt-head-cache.')
+    return args
 
 
 def apply_config(args, cfg):
@@ -380,7 +385,13 @@ def build_head_cache(model, dataset, split, prompt_indices, args):
 
 def prepare_head_cache(model, train_dataset, validation_dataset,
                        prompt_indices, args):
-    """Build the cache once, or reuse the supplied directory unchanged."""
+    """Skip caching in online mode, otherwise build or reuse the directory."""
+    if not args.prompt_head_cache:
+        if args.rebuild_cache:
+            raise ValueError('--rebuild-cache requires --prompt-head-cache.')
+        print('Prompt heads: online SAM3 extraction; disk head cache disabled.',
+              flush=True)
+        return False
     if osp.exists(args.prompt_head_cache) and not osp.isdir(
             args.prompt_head_cache):
         raise ValueError(
@@ -435,6 +446,48 @@ def load_heads(path, expected_image_path, expected_prompt_idx,
         name: value.to(device=device, dtype=torch.float32)
         for name, value in cached_heads.items()
     }
+
+
+def load_sample_prompt_heads(model, data_sample, sample_idx, split,
+                             prompt_indices, args, signature=None, device=None):
+    """Read explicit cache entries or extract frozen heads for one image.
+
+    Online extraction shares image encoding across the requested prompts and
+    keeps only the current sample's heads. Calibration remains outside no_grad.
+    Cache reads stay on CPU unless a compute device is requested.
+    """
+    prompt_indices = list(prompt_indices)
+    image_path = data_sample.metainfo['img_path']
+    if args.prompt_head_cache:
+        if signature is None:
+            signature = cache_signature(model)
+        heads_by_prompt = {
+            prompt_idx: load_heads_cpu(
+                cache_file(args.prompt_head_cache, split, prompt_idx,
+                           int(sample_idx), image_path),
+                image_path, prompt_idx, model.query_words[prompt_idx], signature)
+            for prompt_idx in prompt_indices
+        }
+    else:
+        with Image.open(image_path) as source:
+            image = source.convert('RGB')
+        with torch.no_grad():
+            all_heads = model.extract_prompt_heads_batch(
+                image, prompt_indices,
+                ori_shape=tuple(data_sample.gt_sem_seg.data.shape[-2:]))
+        heads_by_prompt = {
+            prompt_idx: {name: value.detach() for name, value in heads.items()}
+            for prompt_idx, heads in zip(prompt_indices, all_heads)
+        }
+    if device is not None:
+        heads_by_prompt = {
+            prompt_idx: {
+                name: value.to(device=device, dtype=torch.float32)
+                for name, value in heads.items()
+            }
+            for prompt_idx, heads in heads_by_prompt.items()
+        }
+    return heads_by_prompt
 
 
 def binary_target(data_sample, valid_labels, ignore_index, device):
@@ -683,11 +736,6 @@ def metrics_text(metrics):
         for label, name in names)
 
 
-def panel_map(value):
-    """Convert a cached score tensor into a diagnose-style display map."""
-    return value.detach().float().squeeze().clamp(0.0, 1.0).cpu().numpy()
-
-
 def save_validation_visualization(model, data_sample, heads, prompt_idx,
                                   valid_labels, epoch, args):
     """Save a full diagnostic panel or a compact two-overlay validation view."""
@@ -814,19 +862,9 @@ def build_prompt_strata(model, dataset, prompt_idx, valid_labels, args):
         for sample_idx in range(sample_count):
             sample = dataset[sample_idx]
             data_sample = sample['data_samples']
-            image_path = data_sample.metainfo['img_path']
-            heads = load_heads(
-                cache_file(
-                    args.prompt_head_cache,
-                    'train',
-                    prompt_idx,
-                    sample_idx,
-                    image_path),
-                image_path,
-                prompt_idx,
-                model.query_words[prompt_idx],
-                signature,
-                model.device)
+            heads = load_sample_prompt_heads(
+                model, data_sample, sample_idx, 'train', [prompt_idx], args,
+                signature=signature, device=model.device)[prompt_idx]
             target, valid_mask = binary_target(
                 data_sample, valid_labels, args.ignore_index, model.device)
             probability = model.calibrate_prompt_heads(prompt_idx, heads)
@@ -846,7 +884,7 @@ def build_prompt_strata(model, dataset, prompt_idx, valid_labels, args):
 
 def run_prompt_epoch(model, dataset, split, prompt_idx, valid_labels, args,
                      optimizer=None, epoch=0, sampling_groups=None):
-    """Run one cached epoch for exactly one prompt parameter group.
+    """Run one online or cached epoch for one prompt parameter group.
 
     Passing an optimizer enables training. Without one, the same path performs
     validation under no_grad so score selection matches the training formula.
@@ -880,19 +918,9 @@ def run_prompt_epoch(model, dataset, split, prompt_idx, valid_labels, args,
         sample = dataset[int(sample_idx)]
         data_sample = sample['data_samples']
         image_path = data_sample.metainfo['img_path']
-        path = cache_file(
-            args.prompt_head_cache,
-            split,
-            prompt_idx,
-            int(sample_idx),
-            image_path)
-        heads = load_heads(
-            path,
-            image_path,
-            prompt_idx,
-            model.query_words[prompt_idx],
-            cache_signature(model),
-            model.device)
+        heads = load_sample_prompt_heads(
+            model, data_sample, sample_idx, split, [prompt_idx], args,
+            device=model.device)[prompt_idx]
         target, valid_mask = binary_target(
             data_sample, valid_labels, args.ignore_index, model.device)
 
@@ -1728,7 +1756,7 @@ def update_stage_a_comparison(args):
 
 
 def run_training(args):
-    """Build caches, optimize prompts sequentially, and export stage-one data."""
+    """Prepare optional caches, optimize prompts, and export stage-one data."""
     cfg = shared.load_config(args.config)
     shared.merge_cfg_options(cfg, args.cfg_options)
     apply_config(args, cfg)

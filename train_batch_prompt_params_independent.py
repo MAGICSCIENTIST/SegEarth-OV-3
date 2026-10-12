@@ -1,6 +1,6 @@
 """Train independent prompt calibrations in small prompt batches.
 
-This entry point reuses the single-prompt cache, loss, metrics, and export
+This entry point reuses single-prompt head extraction, loss, metrics, and export
 format. Prompts in one batch see the same image order but retain independent
 parameters, Adam states, validation histories, early stopping, and checkpoints.
 """
@@ -12,7 +12,6 @@ import json
 import os
 import os.path as osp
 import sys
-import time
 
 os.environ.setdefault('SEGOV3_LIGHTWEIGHT_TRAIN', '1')
 
@@ -21,6 +20,7 @@ import torch
 import torch.nn.functional as F
 
 from concept_utils import load_concepts
+from metrics_reporting import ProgressReporter, TrainingOutputReporter
 import train_learnable_params as shared
 import train_prompt_params_independent as single
 
@@ -122,31 +122,21 @@ def stack_prompt_heads(heads_by_prompt, prompt_indices):
 
 def load_cached_sample(dataset, sample_idx, split, prompt_indices, args,
                        signature, model):
-    """Load one dataset sample and its unchanged per-prompt cache files."""
+    """Load one sample with cached heads or online frozen SAM3 heads."""
     sample = dataset[int(sample_idx)]
     data_sample = sample['data_samples']
     image_path = data_sample.metainfo['img_path']
-    heads_by_prompt = {}
-    for prompt_idx in prompt_indices:
-        heads_by_prompt[prompt_idx] = single.load_heads_cpu(
-            single.cache_file(
-                args.prompt_head_cache,
-                split,
-                prompt_idx,
-                int(sample_idx),
-                image_path),
-            image_path,
-            prompt_idx,
-            model.query_words[prompt_idx],
-            signature)
+    heads_by_prompt = single.load_sample_prompt_heads(
+        model, data_sample, sample_idx, split, prompt_indices, args,
+        signature=signature)
     return int(sample_idx), data_sample, image_path, heads_by_prompt
 
 
 def prefetched_cached_samples(dataset, indices, split, prompt_indices, args,
                               signature, model):
-    """Yield cache samples in order while a bounded worker pool reads ahead."""
+    """Prefetch disk reads, but run online SAM3 serially on the caller thread."""
     indices = [int(index) for index in indices]
-    if args.cache_prefetch_workers == 0:
+    if not args.prompt_head_cache or args.cache_prefetch_workers == 0:
         for sample_idx in indices:
             yield load_cached_sample(
                 dataset,
@@ -188,7 +178,7 @@ def prefetched_cached_samples(dataset, indices, split, prompt_indices, args,
 
 
 def transfer_prompt_heads(heads_by_prompt, prompt_indices, model, args):
-    """Stack CPU cache tensors and transfer each head type as one batch."""
+    """Stack cached or online heads and move each type to the compute device."""
     stacked = stack_prompt_heads(heads_by_prompt, prompt_indices)
     use_pinned_memory = (
         args.pin_memory
@@ -196,7 +186,8 @@ def transfer_prompt_heads(heads_by_prompt, prompt_indices, model, args):
         and torch.cuda.is_available())
     transferred = {}
     for name, value in stacked.items():
-        if use_pinned_memory and not value.is_pinned():
+        if (use_pinned_memory and value.device.type == 'cpu'
+                and not value.is_pinned()):
             value = value.pin_memory()
         transferred[name] = value.to(
             device=model.device,
@@ -465,7 +456,7 @@ def run_prompt_batch_epoch(model, dataset, split, prompt_indices,
         for prompt_idx in prompt_indices
     }
     signature = single.cache_signature(model)
-    started = time.time()
+    progress = ProgressReporter(total=len(indices))
 
     sample_stream = prefetched_cached_samples(
         dataset,
@@ -552,15 +543,10 @@ def run_prompt_batch_epoch(model, dataset, split, prompt_indices,
         if (args.progress_interval > 0
                 and (order_idx % args.progress_interval == 0
                      or order_idx == len(indices))):
-            elapsed = time.time() - started
-            eta = (
-                elapsed / order_idx * (len(indices) - order_idx)
-                if order_idx > 0 else 0.0)
             print(
                 f'[{split}:prompt-batch] epoch={epoch} '
                 f'{order_idx}/{len(indices)} prompts={prompt_indices} '
-                f'elapsed={shared.format_duration(elapsed)} '
-                f'eta={shared.format_duration(eta)}',
+                f'{progress.format(order_idx)}',
                 flush=True)
 
     return finalize_device_metric_states(metric_states)
@@ -811,6 +797,7 @@ def train_prompt_batch(model, train_dataset, validation_dataset,
         writer)
 
     active = list(pending)
+    epoch_progress = ProgressReporter(total=args.epochs_per_prompt)
     for epoch in range(1, args.epochs_per_prompt + 1):
         train_metrics = run_prompt_batch_epoch(
             model,
@@ -883,6 +870,10 @@ def train_prompt_batch(model, train_dataset, validation_dataset,
             active.remove(prompt_idx)
         if writer is not None:
             writer.flush()
+        print(
+            f'[prompt-batch:epochs] epoch={epoch}/{args.epochs_per_prompt} '
+            f'active_prompts={active} {epoch_progress.format(epoch)}',
+            flush=True)
         if not active:
             break
 
@@ -904,7 +895,7 @@ def train_prompt_batch(model, train_dataset, validation_dataset,
 
 
 def run_training(args):
-    """Build caches, then optimize independent prompts in small batches."""
+    """Prepare optional caches and optimize independent prompts in batches."""
     cfg = shared.load_config(args.config)
     shared.merge_cfg_options(cfg, args.cfg_options)
     single.apply_config(args, cfg)
@@ -977,6 +968,7 @@ def run_training(args):
         args)
 
     records = []
+    batch_progress = ProgressReporter(total=len(batches))
     for batch_index, batch_indices in enumerate(batches, start=1):
         print(
             f'=== prompt batch {batch_index}/{len(batches)}: '
@@ -990,6 +982,9 @@ def run_training(args):
             args,
             writer=writer))
         single.save_progress(records, model, args)
+        print(
+            f'[prompt-batches:overall] {batch_index}/{len(batches)} '
+            f'{batch_progress.format(batch_index)}', flush=True)
         if writer is not None:
             writer.flush()
 
@@ -1015,29 +1010,9 @@ def run_training(args):
 
 def main():
     args = parse_args()
-    os.makedirs(args.save_dir, exist_ok=True)
-    log_path = osp.join(args.save_dir, 'log.txt')
-    run_log_path = osp.join(args.save_dir, 'run.log')
-    with (open(log_path, 'a', encoding='utf-8', buffering=1) as log_file,
-          open(run_log_path, 'a', encoding='utf-8', buffering=1) as run_log):
-        original_stdout = sys.stdout
-        original_stderr = sys.stderr
-        sys.stdout = single.TeeStream(original_stdout, log_file, run_log)
-        sys.stderr = single.TeeStream(original_stderr, log_file, run_log)
-        try:
-            print(
-                f'\n=== batch independent prompt training started '
-                f'{time.strftime("%Y-%m-%d %H:%M:%S")} ===',
-                flush=True)
-            print(f'log_file={osp.abspath(log_path)}', flush=True)
-            run_training(args)
-        finally:
-            print(
-                f'=== batch independent prompt training ended '
-                f'{time.strftime("%Y-%m-%d %H:%M:%S")} ===',
-                flush=True)
-            sys.stdout = original_stdout
-            sys.stderr = original_stderr
+    with TrainingOutputReporter(
+            args.save_dir, 'batch independent prompt training'):
+        run_training(args)
 
 
 if __name__ == '__main__':

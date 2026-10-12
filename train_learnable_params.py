@@ -12,51 +12,26 @@ from types import SimpleNamespace
 os.environ.setdefault('SEGOV3_LIGHTWEIGHT_TRAIN', '1')
 import torch
 import torch.nn.functional as F
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
+from tools.visual_utils import (
+    save_training_comparisons,
+    load_chinese_font,
+    label_color,
+    concept_color,
+    concept_gt_color,
+    font_supports_text,
+    render_gt_label,
+    load_raster,
+    blend_overlay,
+    render_gt_overlay,
+    render_prediction,
+    render_concept_mask,
+    save_compare_image,
+)
 import numpy as np
 
 from segearthov3_learnable_segmentor import SegEarthOV3LearnableSegmentation
 from metrics_reporting import MetricsReporter
-
-
-def load_chinese_font(size=18):
-    font_candidates = [
-        r'C:\Windows\Fonts\msyh.ttc',
-        r'C:\Windows\Fonts\simhei.ttf',
-        r'C:\Windows\Fonts\simsun.ttc',
-        r'C:\Windows\Fonts\arialuni.ttf',
-    ]
-    for font_path in font_candidates:
-        if osp.exists(font_path):
-            return ImageFont.truetype(font_path, size=size)
-    return ImageFont.load_default()
-
-
-def label_color(label):
-    label = int(label)
-    return np.array([
-        (37 * label + 17) % 256,
-        (67 * label + 29) % 256,
-        (97 * label + 43) % 256
-    ],
-                    dtype=np.uint8)
-
-
-def concept_color(index):
-    index = int(index) + 1
-    return np.array([
-        (53 * index + 31) % 256,
-        (97 * index + 47) % 256,
-        (149 * index + 61) % 256
-    ],
-                    dtype=np.uint8)
-
-
-def concept_gt_color(concept, fallback_index):
-    labels = concept.get('tnls_dl3', [])
-    if labels:
-        return label_color(labels[0])
-    return concept_color(fallback_index)
 
 
 def safe_filename(text, max_length=120):
@@ -70,14 +45,6 @@ def safe_filename(text, max_length=120):
             keep.append(char)
     name = ''.join(keep).strip(' ._')
     return (name[:max_length].rstrip(' ._') or 'item')
-
-
-def font_supports_text(font, text):
-    try:
-        font.getbbox(text)
-        return True
-    except UnicodeEncodeError:
-        return False
 
 
 class AttrDict(dict):
@@ -154,73 +121,6 @@ class LightweightSegDataset:
         if gt.dim() == 3:
             gt = gt[..., 0]
         return {'data_samples': LightweightDataSample(img_path, gt)}
-
-
-def render_gt_label(label, ignore_index):
-    label_np = label.detach().cpu().numpy()
-    image = np.zeros((*label_np.shape, 3), dtype=np.uint8)
-    for value in np.unique(label_np):
-        if int(value) == ignore_index:
-            continue
-        image[label_np == value] = label_color(value)
-    return image
-
-
-def load_raster(image_path, shape):
-    raster = Image.open(image_path).convert('RGB')
-    raster = raster.resize((shape[1], shape[0]))
-    return np.asarray(raster, dtype=np.uint8)
-
-
-def blend_overlay(raster, color_layer, mask, alpha):
-    overlay = raster.copy()
-    blended = (
-        raster.astype(np.float32) * (1 - alpha) +
-        color_layer.astype(np.float32) * alpha)
-    overlay[mask] = blended[mask].astype(np.uint8)
-    return overlay
-
-
-def render_gt_overlay(raster, label, ignore_index, alpha):
-    label_np = label.detach().cpu().numpy()
-    label_vis = render_gt_label(label, ignore_index)
-    valid_mask = label_np != ignore_index
-    return blend_overlay(raster, label_vis, valid_mask, alpha)
-
-
-def render_prediction(raster, pred_label, concepts, alpha):
-    pred_np = pred_label.detach().cpu().numpy()
-    color_layer = np.zeros((*pred_np.shape, 3), dtype=np.uint8)
-    valid_mask = np.zeros(pred_np.shape, dtype=bool)
-    for concept_idx, concept in enumerate(concepts):
-        concept_mask = pred_np == concept_idx
-        color_layer[concept_mask] = concept_gt_color(concept, concept_idx)
-        valid_mask |= concept_mask
-    return blend_overlay(raster, color_layer, valid_mask, alpha)
-
-
-def render_concept_mask(raster, pred_label, concept_idx, concept, alpha):
-    pred_np = pred_label.detach().cpu().numpy()
-    mask = pred_np == concept_idx
-    color_layer = np.zeros((*pred_np.shape, 3), dtype=np.uint8)
-    color_layer[mask] = concept_gt_color(concept, concept_idx)
-    return blend_overlay(raster, color_layer, mask, alpha)
-
-
-def save_compare_image(left, right, left_title, right_title, out_file, font):
-    title_height = 32
-    h, w = left.shape[:2]
-    canvas = np.full((h + title_height, w * 2, 3), 255, dtype=np.uint8)
-    canvas[title_height:, :w] = left
-    canvas[title_height:, w:] = right
-    image = Image.fromarray(canvas)
-    draw = ImageDraw.Draw(image)
-    if not font_supports_text(font, right_title):
-        right_title = ''.join(char if ord(char) < 128 else '_'
-                              for char in right_title)
-    draw.text((6, 5), left_title, fill=(0, 0, 0), font=font)
-    draw.text((w + 6, 5), right_title, fill=(0, 0, 0), font=font)
-    image.save(out_file)
 
 
 def safe_divide(numerator, denominator):
@@ -446,13 +346,7 @@ def describe_loss_args(args):
 
 
 def format_duration(seconds):
-    seconds = max(float(seconds), 0.0)
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
-    if hours > 0:
-        return f'{hours:02d}:{minutes:02d}:{secs:02d}'
-    return f'{minutes:02d}:{secs:02d}'
+    return MetricsReporter.format_duration(seconds)
 
 
 def cuda_status():
@@ -536,35 +430,9 @@ def save_validation_visualization(model,
     gt_label = data_sample.gt_sem_seg.data.squeeze()
     pred_label = class_scores_to_prediction(model, class_scores).detach().cpu()
 
-    vis_root = osp.join(save_dir, 'vis_data')
-    vis_image_dir = osp.join(vis_root, 'vis_image')
-    visual_dir = osp.join(vis_root, 'visual')
-    os.makedirs(vis_image_dir, exist_ok=True)
-    os.makedirs(visual_dir, exist_ok=True)
-
-    epoch_suffix = f'epoch_{epoch:04d}'
-    basename = osp.splitext(osp.basename(image_path))[0]
-    font = load_chinese_font()
-    image_shape = gt_label.shape[-2:]
-    raster = load_raster(image_path, image_shape)
-
-    gt_vis = render_gt_overlay(raster, gt_label, ignore_index, gt_alpha)
-    pred_vis = render_prediction(raster, pred_label, model.concepts, gt_alpha)
-    save_compare_image(
-        gt_vis, pred_vis, 'GT label', 'prediction',
-        osp.join(vis_image_dir, f'{basename}_{epoch_suffix}.jpg'), font)
-
-    for concept_idx, concept in enumerate(model.concepts):
-        concept_id = safe_filename(concept.get('concept_id') or concept_idx)
-        concept_name = concept.get('concept_name') or concept.get(
-            'concept_id') or str(concept_idx)
-        concept_vis = render_concept_mask(
-            raster, pred_label, concept_idx, concept, gt_alpha)
-        save_compare_image(
-            gt_vis, concept_vis, 'GT label', concept_name,
-            osp.join(
-                visual_dir,
-                f'{basename}_{concept_id}_{epoch_suffix}.jpg'), font)
+    save_training_comparisons(
+        image_path, gt_label, pred_label, model.concepts, save_dir, epoch,
+        ignore_index, gt_alpha)
 
 
 def to_attr_dict(value):
@@ -744,19 +612,41 @@ def save_experiment_snapshot(args, cfg):
 
 
 def get_train_dataset_cfg(cfg):
-    if 'train_dataloader' in cfg:
-        return cfg.train_dataloader.dataset
-    if 'test_dataloader' in cfg:
-        print('train_dataloader is not set; falling back to test_dataloader.')
-        return cfg.test_dataloader.dataset
+    # Support both dict-like configs (as returned by load_python_config)
+    # and attribute-style configs (e.g., mmengine.Config or SimpleNamespace).
+    try:
+        if isinstance(cfg, dict):
+            if 'train_dataloader' in cfg:
+                return cfg['train_dataloader']['dataset']
+            if 'test_dataloader' in cfg:
+                print('train_dataloader is not set; falling back to test_dataloader.')
+                return cfg['test_dataloader']['dataset']
+        else:
+            if hasattr(cfg, 'train_dataloader') and cfg.train_dataloader is not None:
+                return cfg.train_dataloader.dataset
+            if hasattr(cfg, 'test_dataloader') and cfg.test_dataloader is not None:
+                print('train_dataloader is not set; falling back to test_dataloader.')
+                return cfg.test_dataloader.dataset
+    except Exception:
+        # Fall through to the error below with a helpful message.
+        pass
     raise KeyError('Config must define train_dataloader or test_dataloader.')
 
 
 def get_validation_dataset_cfg(cfg):
-    if 'validation_dataloader' in cfg:
-        return cfg.validation_dataloader.dataset
-    if 'val_dataloader' in cfg:
-        return cfg.val_dataloader.dataset
+    try:
+        if isinstance(cfg, dict):
+            if 'validation_dataloader' in cfg:
+                return cfg['validation_dataloader']['dataset']
+            if 'val_dataloader' in cfg:
+                return cfg['val_dataloader']['dataset']
+        else:
+            if hasattr(cfg, 'validation_dataloader') and cfg.validation_dataloader is not None:
+                return cfg.validation_dataloader.dataset
+            if hasattr(cfg, 'val_dataloader') and cfg.val_dataloader is not None:
+                return cfg.val_dataloader.dataset
+    except Exception:
+        return None
     return None
 
 
@@ -1253,20 +1143,17 @@ def metric_rows(intersect, union, pred, label, names):
 
 
 def metric_summary(intersect, union, pred, label):
-    iou = safe_divide(intersect, union)
-    acc = safe_divide(intersect, label)
-    recall = acc
-
-    def nanmean_percent(values):
-        valid = ~torch.isnan(values)
-        if not torch.any(valid):
-            return float('nan')
-        return float((values[valid].mean() * 100).item())
-
-    return dict(
-        mIoU=nanmean_percent(iou),
-        mAcc=nanmean_percent(acc),
-        mRecall=nanmean_percent(recall))
+    rows = [
+        MetricsReporter.counts_to_metrics(
+            intersect[index], union[index], pred[index], label[index])
+        for index in range(len(intersect))
+    ]
+    summary = MetricsReporter.summarize_rows(rows)
+    return {
+        key: (float('nan') if summary[key] is None else summary[key])
+        for key in (
+            'aAcc', 'mIoU', 'mAcc', 'mFscore', 'mPrecision', 'mRecall')
+    }
 
 
 def validation_report(state):
@@ -1593,8 +1480,11 @@ def validate(model,
     report_header = (
         f'\nValidation epoch={epoch} samples={num_samples} '
         f'loss={val_loss:.6f}\n'
+        f"aAcc={summary['aAcc']:.2f} "
         f"mIoU={summary['mIoU']:.2f} "
         f"mAcc={summary['mAcc']:.2f} "
+        f"mFscore={summary['mFscore']:.2f} "
+        f"mPrecision={summary['mPrecision']:.2f} "
         f"mRecall={summary['mRecall']:.2f}\n")
     print(report_header + class_table, flush=True)
     if log_file is not None:
@@ -1612,12 +1502,7 @@ def validate(model,
             split='validation',
             threshold=model.prob_thd)
         summary_row = dict(
-            mIoU=summary['mIoU'],
-            mAcc=summary['mAcc'],
-            mRecall=summary['mRecall'],
-            Epoch=epoch,
-            Split='validation',
-            Loss=val_loss)
+            summary, Epoch=epoch, Split='validation', Loss=val_loss)
         MetricsReporter.write_workbook(
             osp.join(args.save_dir, 'results.xlsx'),
             summaries=[summary_row],
@@ -1724,8 +1609,11 @@ def main():
             print(
                 f"epoch={epoch} train_loss={train_loss:.6f} "
                 f"val_loss={val_loss:.6f} "
+                f"aAcc={val_summary['aAcc']:.2f} "
                 f"mIoU={val_summary['mIoU']:.2f} "
                 f"mAcc={val_summary['mAcc']:.2f} "
+                f"mFscore={val_summary['mFscore']:.2f} "
+                f"mPrecision={val_summary['mPrecision']:.2f} "
                 f"mRecall={val_summary['mRecall']:.2f}")
         else:
             val_summary = None

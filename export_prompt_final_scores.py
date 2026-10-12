@@ -20,6 +20,7 @@ os.environ.setdefault('SEGOV3_LIGHTWEIGHT_TRAIN', '1')
 import numpy as np
 import torch
 from PIL import Image
+from tools.visual_utils import panel_map
 
 from segearthov3_learnable_segmentor import (
     SCORE_EPS,
@@ -533,11 +534,6 @@ def reconstruct_final_score(heads, parameters):
     return final_score
 
 
-def panel_map(value):
-    return (
-        value.detach().float().squeeze().clamp(0.0, 1.0).cpu().numpy())
-
-
 def visual_output_path(vis_folder, image_path, item):
     image_id = safe_prompt_folder(image_path.stem)
     prompt_name = safe_prompt_folder(item.prompt)
@@ -751,7 +747,7 @@ def export_scores(args):
             'SAM3 inference will be skipped.',
             flush=True)
     if pending_visual_count > 0:
-        from diagnose_sam3_heads import save_panel
+        from tools.visual_utils import save_panel
         vis_folder.mkdir(parents=True, exist_ok=True)
     else:
         save_panel = None

@@ -1,18 +1,11 @@
 import os
 import os.path as osp
-import re
 
 import numpy as np
 from PIL import Image
 
 
-PROMPT_FILENAME_SEPARATOR = '__PROMPT__'
-
-
-def safe_filename(text, max_length=120):
-    text = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', str(text))
-    text = re.sub(r'\s+', '_', text).strip(' ._')
-    return (text[:max_length].rstrip(' ._') or 'prompt')
+from tools.visual_utils import PROMPT_FILENAME_SEPARATOR, safe_filename
 
 
 def ensure_tnls_output_dirs(output_dir):

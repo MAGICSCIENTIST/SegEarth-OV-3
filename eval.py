@@ -12,7 +12,7 @@ import custom_transforms
 import custom_visualizers
 import custom_metrics
 from custom_savers import save_tnls_outputs
-from custom_visualizers import save_tnls_concept_comparisons
+from tools.visual_utils import save_tnls_concept_comparisons
 from metrics_reporting import MetricsReporter
 
 
